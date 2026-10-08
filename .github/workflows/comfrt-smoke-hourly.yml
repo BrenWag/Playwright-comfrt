@@ -1,0 +1,76 @@
+name: Smoke horario de Comfrt
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: reporte-smoke-comfrt
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Obtener el repositorio
+        uses: actions/checkout@v4
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependencias del proyecto
+        run: npm ci
+
+      - name: Instalar Chromium y WebKit para la matriz de dispositivos
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: Ejecutar smoke en escritorio y dispositivos móviles
+        run: npm run test:smoke -- --reporter=html
+
+      - name: Preparar GitHub Pages
+        if: always()
+        uses: actions/configure-pages@v5
+
+      - name: Guardar el reporte como artefacto descargable
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reporte-smoke-comfrt-${{ github.run_number }}
+          path: playwright-report/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Subir el reporte para publicarlo en Pages
+        if: always()
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: playwright-report/
+
+      - name: Publicar el reporte en GitHub Pages
+        if: always()
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Mostrar el enlace al reporte
+        if: always()
+        env:
+          REPORT_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          if [ -n "$REPORT_URL" ]; then
+            echo "## Reporte del smoke de Comfrt" >> "$GITHUB_STEP_SUMMARY"
+            echo "[Abrir el reporte HTML]($REPORT_URL)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No se pudo publicar el reporte. Habilita GitHub Pages con la fuente GitHub Actions en Settings > Pages." >> "$GITHUB_STEP_SUMMARY"
+          fi
