@@ -8,7 +8,7 @@ test.describe('Comfrt product experience', () => {
     await productPage.goto('teddy-full-zip');
     await productPage.waitForProductToLoad();
 
-    await expect(productPage.productInfo).toBeVisible();
+    await expect(productPage.productMain).toBeVisible();
     await expect(productPage.colorLinks.first()).toBeVisible();
     await expect(productPage.sizeLinks.first()).toBeVisible();
     await expect(productPage.addToCartButton).toBeVisible();

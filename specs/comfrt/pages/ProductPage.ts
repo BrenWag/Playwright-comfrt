@@ -4,62 +4,69 @@ import { Page, Locator, expect } from '@playwright/test';
 export class ProductPage {
   readonly page: Page;
 
-  readonly productInfo: Locator;
+  readonly productMain: Locator;
   readonly sizeGroup: Locator;
   readonly colorGroups: Locator;
   readonly sizeLinks: Locator;
   readonly colorLinks: Locator;
   readonly addToCartButton: Locator;
   readonly cartCheckoutButton: Locator;
-  readonly tryYourLuckDialog: Locator;
+  readonly promotionalDialog: Locator;
 
   constructor(page: Page) {
     this.page = page;
-    // Acota las acciones al componente de compra principal, sin depender del nombre ni del precio del producto.
-    this.productInfo = page.getByRole('region', { name: 'Product Info' });
-    this.sizeGroup = this.productInfo.getByRole('group', { name: /Size/i }).first();
-    this.colorGroups = this.productInfo.getByRole('group', { name: /Color/i });
+    // Mobile mantiene los controles bajo main, pero no siempre expone una región Product Info.
+    this.productMain = page.getByRole('main');
+    this.sizeGroup = this.productMain.getByRole('group', { name: /Size/i }).first();
+    this.colorGroups = this.productMain.getByRole('group', { name: /Color/i });
     this.sizeLinks = this.sizeGroup.getByRole('link');
     this.colorLinks = this.colorGroups.getByRole('link');
-    this.addToCartButton = this.productInfo.getByRole('button', { name: /^Add to Cart\b/i }).first();
+    this.addToCartButton = this.productMain.getByRole('button', { name: /^Add to Cart\b/i }).first();
     this.cartCheckoutButton = page.getByRole('main').getByRole('button', { name: 'Checkout', exact: true });
-    this.tryYourLuckDialog = page.getByRole('dialog').filter({ hasText: /Try Your Luck/i });
+    this.promotionalDialog = page.getByRole('dialog').filter({ hasText: /Try Your Luck|Mystery Offer/i }).first();
   }
 
   // Abre un producto a partir de su identificador de URL.
   async goto(slug: string) {
-    await this.page.addLocatorHandler(this.tryYourLuckDialog, async () => {
-      await this.closeTryYourLuckDialog();
+    await this.page.addLocatorHandler(this.promotionalDialog, async () => {
+      await this.closePromotionalDialog();
     });
     await this.page.goto(`/products/${slug}`, { waitUntil: 'commit' });
   }
 
   // Espera los componentes funcionales de compra, sin depender de contenido comercial variable.
   async waitForProductToLoad() {
-    await this.closeTryYourLuckDialogIfVisible();
-    await this.productInfo.waitFor({ state: 'visible' });
+    await this.closePromotionalDialogIfVisible();
+    await this.productMain.waitFor({ state: 'visible' });
     await this.sizeLinks.first().waitFor({ state: 'visible' });
     await this.colorLinks.first().waitFor({ state: 'visible' });
     await this.addToCartButton.waitFor({ state: 'visible' });
-    await this.closeTryYourLuckDialogIfVisible();
+    await this.closePromotionalDialogIfVisible();
   }
 
-  // Cierra solamente el modal Try Your Luck, sin afectar otros diálogos del storefront.
-  async closeTryYourLuckDialogIfVisible() {
-    if (await this.tryYourLuckDialog.isVisible().catch(() => false)) {
-      await this.closeTryYourLuckDialog();
+  // Cierra solo los popups promocionales conocidos, sin afectar otros diálogos del storefront.
+  async closePromotionalDialogIfVisible() {
+    if (await this.promotionalDialog.isVisible().catch(() => false)) {
+      await this.closePromotionalDialog();
     }
   }
 
-  private async closeTryYourLuckDialog() {
-    const closeButton = this.tryYourLuckDialog.getByRole('button', { name: /Close popup/i });
-    await closeButton.click();
-    await expect(this.tryYourLuckDialog).toBeHidden({ timeout: 5000 });
+  private async closePromotionalDialog() {
+    const closeButton = this.promotionalDialog.getByRole('button', { name: /close|dismiss/i });
+    if (await closeButton.isVisible().catch(() => false)) {
+      await closeButton.click();
+    } else {
+      const dialogButtons = this.promotionalDialog.getByRole('button');
+      await expect(dialogButtons).toHaveCount(1);
+      await dialogButtons.first().click();
+    }
+
+    await expect(this.promotionalDialog).toBeHidden({ timeout: 5000 });
   }
 
   // Deja el CTA visible y habilitado antes de que el test intente usarlo.
   async waitUntilAddToCartIsReady() {
-    await this.closeTryYourLuckDialogIfVisible();
+    await this.closePromotionalDialogIfVisible();
     await this.addToCartButton.scrollIntoViewIfNeeded();
     await expect(this.addToCartButton).toBeEnabled({ timeout: 15000 });
   }
@@ -141,7 +148,7 @@ export class ProductPage {
     await this.waitUntilAddToCartIsReady();
     await this.addToCartButton.scrollIntoViewIfNeeded();
     await this.addToCartButton.click();
-    await this.closeTryYourLuckDialogIfVisible();
+    await this.closePromotionalDialogIfVisible();
     await this.page.goto('/cart', { waitUntil: 'commit' });
     await expect(this.cartCheckoutButton).toBeEnabled({ timeout: 15000 });
   }
