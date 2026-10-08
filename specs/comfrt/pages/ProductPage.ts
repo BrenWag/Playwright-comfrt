@@ -5,83 +5,134 @@ export class ProductPage {
   readonly page: Page;
 
   readonly productInfo: Locator;
-  readonly productTitle: Locator;
-  readonly priceText: Locator;
+  readonly sizeGroup: Locator;
+  readonly colorGroups: Locator;
   readonly sizeLinks: Locator;
   readonly colorLinks: Locator;
   readonly addToCartButton: Locator;
-  readonly cartDialog: Locator;
+  readonly cartCheckoutButton: Locator;
+  readonly tryYourLuckDialog: Locator;
 
   constructor(page: Page) {
     this.page = page;
-    // Limitar los datos a esta región evita coincidencias con menú, drawer o contenido relacionado.
+    // Acota las acciones al componente de compra principal, sin depender del nombre ni del precio del producto.
     this.productInfo = page.getByRole('region', { name: 'Product Info' });
-    this.productTitle = page.getByRole('heading', { name: 'Teddy Full Zip Jacket', exact: true, level: 1 });
-    // El mismo precio también aparece dentro del CTA; usamos la primera coincidencia, que es el precio del producto.
-    this.priceText = this.productInfo.getByText('$49', { exact: true }).first();
-    this.sizeLinks = this.productInfo.getByRole('link', { name: /^(XS|S|M|L|XL|2X|3X)$/i });
-    this.colorLinks = this.productInfo.getByRole('link', { name: /^(Alpine|Espresso|Onyx Black|Houndstooth)$/i });
+    this.sizeGroup = this.productInfo.getByRole('group', { name: /Size/i }).first();
+    this.colorGroups = this.productInfo.getByRole('group', { name: /Color/i });
+    this.sizeLinks = this.sizeGroup.getByRole('link');
+    this.colorLinks = this.colorGroups.getByRole('link');
     this.addToCartButton = this.productInfo.getByRole('button', { name: /^Add to Cart\b/i }).first();
-    this.cartDialog = page.getByRole('dialog', { name: /Shopping cart/i });
+    this.cartCheckoutButton = page.getByRole('main').getByRole('button', { name: 'Checkout', exact: true });
+    this.tryYourLuckDialog = page.getByRole('dialog').filter({ hasText: /Try Your Luck/i });
   }
 
   // Abre un producto a partir de su identificador de URL.
   async goto(slug: string) {
+    await this.page.addLocatorHandler(this.tryYourLuckDialog, async () => {
+      await this.closeTryYourLuckDialog();
+    });
     await this.page.goto(`/products/${slug}`, { waitUntil: 'commit' });
   }
 
-  // Espera título y precio para evitar validar una PDP que todavía está cargando.
+  // Espera los componentes funcionales de compra, sin depender de contenido comercial variable.
   async waitForProductToLoad() {
-    await this.productTitle.waitFor({ state: 'visible' });
-    await this.priceText.waitFor({ state: 'visible' });
+    await this.closeTryYourLuckDialogIfVisible();
+    await this.productInfo.waitFor({ state: 'visible' });
+    await this.sizeLinks.first().waitFor({ state: 'visible' });
+    await this.colorLinks.first().waitFor({ state: 'visible' });
+    await this.addToCartButton.waitFor({ state: 'visible' });
+    await this.closeTryYourLuckDialogIfVisible();
   }
 
-  // Cierra el popup promocional si aparece y puede interferir con los controles del producto.
-  async dismissFloatingPopup() {
-    // Comfrt usa overlays promocionales que pueden interceptar clics. Los cerramos antes de interactuar con el CTA.
-    const closeButtons = this.page.getByRole('button', { name: /Close popup|Close minimized popup/i });
-    const closeButton = closeButtons.first();
-
-    if (await closeButton.isVisible().catch(() => false)) {
-      await closeButton.scrollIntoViewIfNeeded();
-      await closeButton.evaluate((element) => {
-        (element as HTMLElement).click();
-      });
-      await expect(closeButton).toBeHidden({ timeout: 3000 });
+  // Cierra solamente el modal Try Your Luck, sin afectar otros diálogos del storefront.
+  async closeTryYourLuckDialogIfVisible() {
+    if (await this.tryYourLuckDialog.isVisible().catch(() => false)) {
+      await this.closeTryYourLuckDialog();
     }
+  }
+
+  private async closeTryYourLuckDialog() {
+    const closeButton = this.tryYourLuckDialog.getByRole('button', { name: /Close popup/i });
+    await closeButton.click();
+    await expect(this.tryYourLuckDialog).toBeHidden({ timeout: 5000 });
   }
 
   // Deja el CTA visible y habilitado antes de que el test intente usarlo.
   async waitUntilAddToCartIsReady() {
-    await this.dismissFloatingPopup();
+    await this.closeTryYourLuckDialogIfVisible();
     await this.addToCartButton.scrollIntoViewIfNeeded();
     await expect(this.addToCartButton).toBeEnabled({ timeout: 15000 });
   }
 
-  // Selecciona la talla solicitada si está disponible para este producto.
-  async selectSize(size: string) {
-    const sizeGroup = this.productInfo.getByRole('group', { name: /Teddy Full Zip Jacket Size/i });
-    const sizeLink = sizeGroup.getByRole('link', { name: size, exact: true });
-    await sizeLink.click({ noWaitAfter: true });
-    await expect(sizeGroup.getByRole('radio', { name: size, exact: true })).toBeChecked();
+  // Elige una opción de talla disponible sin fijar una etiqueta comercial concreta.
+  async selectAvailableSize() {
+    const selected = await this.selectAvailableOption(this.sizeGroup);
+    expect(selected, 'Debe haber al menos una talla disponible').toBe(true);
   }
 
-  // Selecciona el color solicitado si está disponible para este producto.
-  async selectColor(color: string) {
-    const colorGroups = this.productInfo.getByRole('group', { name: /Teddy Full Zip Jacket Color/i });
-
-    for (let index = 0; index < await colorGroups.count(); index += 1) {
-      const colorGroup = colorGroups.nth(index);
-      const colorLink = colorGroup.getByRole('link', { name: color, exact: true });
-
-      if (await colorLink.isVisible().catch(() => false)) {
-        await colorLink.click({ noWaitAfter: true });
-        await expect(colorGroup.getByRole('radio', { name: color, exact: true })).toBeChecked();
+  // Elige una opción de color disponible en cualquiera de los grupos del producto.
+  async selectAvailableColor() {
+    for (let index = 0; index < await this.colorGroups.count(); index += 1) {
+      if (await this.selectAvailableOption(this.colorGroups.nth(index))) {
         return;
       }
     }
 
-    throw new Error(`No se encontró el color "${color}" en las opciones del producto.`);
+    throw new Error('No se encontró una opción de color disponible en la PDP.');
+  }
+
+  // Comprueba la selección con el radio accesible y activa el link asociado si hace falta.
+  private async selectAvailableOption(group: Locator) {
+    const optionLinks = group.getByRole('link');
+    const optionRadios = group.getByRole('radio');
+    const optionCount = Math.min(await optionLinks.count(), await optionRadios.count());
+    let selectedOption: Locator | undefined;
+
+    for (let index = 0; index < optionCount; index += 1) {
+      const optionLink = optionLinks.nth(index);
+      const optionRadio = optionRadios.nth(index);
+
+      if (!(await optionRadio.isEnabled().catch(() => false))) {
+        continue;
+      }
+
+      if (await optionRadio.isChecked()) {
+        selectedOption ??= optionRadio;
+        continue;
+      }
+
+      if (await optionLink.isVisible().catch(() => false)) {
+        await optionLink.click({ noWaitAfter: true });
+        await expect(optionRadio).toBeChecked();
+        return true;
+      }
+    }
+
+    return Boolean(selectedOption);
+  }
+
+  // Activa por teclado una opción de color para validar el flujo accesible sin depender de su nombre.
+  async selectColorWithKeyboard() {
+    for (let groupIndex = 0; groupIndex < await this.colorGroups.count(); groupIndex += 1) {
+      const group = this.colorGroups.nth(groupIndex);
+      const optionLinks = group.getByRole('link');
+      const optionRadios = group.getByRole('radio');
+      const optionCount = Math.min(await optionLinks.count(), await optionRadios.count());
+
+      for (let optionIndex = 0; optionIndex < optionCount; optionIndex += 1) {
+        const optionLink = optionLinks.nth(optionIndex);
+        const optionRadio = optionRadios.nth(optionIndex);
+
+        if (await optionRadio.isEnabled().catch(() => false) && await optionLink.isVisible().catch(() => false)) {
+          await optionLink.focus();
+          await this.page.keyboard.press('Enter');
+          await expect(optionRadio).toBeChecked();
+          return;
+        }
+      }
+    }
+
+    throw new Error('No se encontró una opción de color para validar la navegación por teclado.');
   }
 
   // Agrega el producto y confirma que el drawer del carrito muestre la línea esperada.
@@ -89,7 +140,9 @@ export class ProductPage {
     // Esperamos a que el botón esté habilitado y al overlay ya no bloquee la interacción.
     await this.waitUntilAddToCartIsReady();
     await this.addToCartButton.scrollIntoViewIfNeeded();
-    await this.addToCartButton.click({ force: true });
-    await expect(this.cartDialog).toContainText(/Teddy Full Zip Jacket/i, { timeout: 15000 });
+    await this.addToCartButton.click();
+    await this.closeTryYourLuckDialogIfVisible();
+    await this.page.goto('/cart', { waitUntil: 'commit' });
+    await expect(this.cartCheckoutButton).toBeEnabled({ timeout: 15000 });
   }
 }

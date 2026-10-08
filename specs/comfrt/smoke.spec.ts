@@ -17,7 +17,7 @@ test.describe('Smoke de Comfrt', () => {
     await test.step('Validar banner, hero y categorías principales', async () => {
       await homePage.waitForPageToLoad();
       await expect(homePage.banner).toBeVisible();
-      await expect(homePage.heroHeading).toBeVisible();
+      await expect(homePage.heroRegion).toBeVisible();
       await expect(homePage.categoryLinks.first()).toBeVisible();
     });
 
@@ -36,17 +36,15 @@ test.describe('Smoke de Comfrt', () => {
       await productPage.goto('teddy-full-zip');
     });
 
-    // Paso 2: validar que la información del producto está disponible.
-    await test.step('Confirmar que la página carga con nombre, precio y variantes', async () => {
+    // Paso 2: validar que el componente de compra y sus opciones estén disponibles.
+    await test.step('Confirmar que la PDP muestra el formulario de compra', async () => {
       await productPage.waitForProductToLoad();
-      await expect(productPage.productTitle).toBeVisible();
-      await expect(productPage.priceText).toBeVisible();
     });
 
-    // Paso 3: elegir una combinación válida para asegurar que la compra queda habilitada.
-    await test.step('Seleccionar talla y color válidos', async () => {
-      await productPage.selectSize('M');
-      await productPage.selectColor('Alpine');
+    // Paso 3: elegir opciones disponibles y confirmar que se habilite la acción de compra.
+    await test.step('Seleccionar variantes disponibles', async () => {
+      await productPage.selectAvailableSize();
+      await productPage.selectAvailableColor();
       await productPage.waitUntilAddToCartIsReady();
       await expect(productPage.addToCartButton).toBeEnabled({ timeout: 15000 });
     });

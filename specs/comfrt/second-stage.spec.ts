@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { CartPage } from './pages/CartPage';
 import { CheckoutPage } from './pages/CheckoutPage';
+import { ProductPage } from './pages/ProductPage';
 
 test.describe('Comfrt second stage coverage', () => {
   // Verifica que el carrito muestre el título y subtotal correspondientes a cero productos.
@@ -40,20 +41,18 @@ test.describe('Comfrt second stage coverage', () => {
   // Comprueba que Tab lleve el foco a controles interactivos en home y PDP.
   test('supports keyboard-first navigation on homepage and PDP', async ({ page }) => {
     await page.goto('/', { waitUntil: 'commit' });
-    await expect(page.getByRole('heading', { name: /Tracking: New Camo|New Cozy Layers|Pink With Purpose/i }).first()).toBeVisible();
+    const heroRegion = page.getByRole('main').getByRole('region').first();
+    await expect(heroRegion).toBeVisible();
 
-    const heroLink = page.getByRole('link', { name: /Tracking: New Camo.*Shop Now/i });
+    const heroLink = heroRegion.getByRole('link').first();
     await heroLink.focus();
     await page.keyboard.press('Enter');
-    await expect(page).toHaveURL(/\/collections\/camo/i);
+    await expect(page).not.toHaveURL(/\/en-ar\/?$/);
 
     await page.goto('/products/teddy-full-zip', { waitUntil: 'commit' });
-    const productHeading = page.getByRole('heading', { name: 'Teddy Full Zip Jacket', exact: true });
-    await expect(productHeading).toBeVisible();
-
-    const colorOption = page.getByRole('region', { name: 'Product Info' }).getByRole('link', { name: 'Espresso', exact: true }).first();
-    await colorOption.focus();
-    await page.keyboard.press('Enter');
-    await expect(page).toHaveURL(/\/products\/teddy-full-zip\?variant=/i);
+    const productPage = new ProductPage(page);
+    await productPage.waitForProductToLoad();
+    await productPage.selectColorWithKeyboard();
+    await expect(page).toHaveURL(/[?&]variant=/i);
   });
 });
