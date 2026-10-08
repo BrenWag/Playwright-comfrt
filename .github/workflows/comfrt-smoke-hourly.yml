@@ -36,8 +36,13 @@ jobs:
       - name: Instalar Chromium y WebKit para la matriz de dispositivos
         run: npx playwright install --with-deps chromium webkit
 
+      - name: Verificar la versión y los browsers instalados
+        run: |
+          npx playwright --version
+          npx playwright install --list
+
       - name: Ejecutar smoke en escritorio y dispositivos móviles
-        run: npm run test:smoke -- --reporter=html
+        run: npm run test:smoke -- --reporter=list,html
 
       - name: Preparar GitHub Pages
         if: always()
@@ -48,7 +53,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: reporte-smoke-comfrt-${{ github.run_number }}
-          path: playwright-report/
+          path: |
+            playwright-report/
+            test-results/
           if-no-files-found: warn
           retention-days: 14
 

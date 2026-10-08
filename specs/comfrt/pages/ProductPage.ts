@@ -16,7 +16,7 @@ export class ProductPage {
     this.page = page;
     // Limitar los datos a esta región evita coincidencias con menú, drawer o contenido relacionado.
     this.productInfo = page.getByRole('region', { name: 'Product Info' });
-    this.productTitle = this.productInfo.getByRole('heading', { name: 'Teddy Full Zip Jacket', exact: true });
+    this.productTitle = page.getByRole('heading', { name: 'Teddy Full Zip Jacket', exact: true, level: 1 });
     // El mismo precio también aparece dentro del CTA; usamos la primera coincidencia, que es el precio del producto.
     this.priceText = this.productInfo.getByText('$49', { exact: true }).first();
     this.sizeLinks = this.productInfo.getByRole('link', { name: /^(XS|S|M|L|XL|2X|3X)$/i });
